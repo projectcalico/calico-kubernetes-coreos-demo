@@ -26,7 +26,10 @@ write_files:
       ETCD_AUTHORITY=${KUBERNETES_MASTER}:4001
       
       # Location from which to download the Kubernetes binaries
-      KUBERNETES_IP=<KUBERNETES_IP>
+      KUBERNETES_LOC=<KUBERNETES_LOC>
+
+      # Location of the calicoctl binary
+      CALICOCTL_PATH=/home/core/calicoctl
 
   - path: /home/core/kubernetes-download.sh
     owner: root
@@ -34,56 +37,46 @@ write_files:
     content: |
       #! /usr/bin/bash
       # Download kubernetes binaries
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kubectl"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kubernetes"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kube-proxy"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kubelet"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubectl"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubernetes"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-proxy"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubelet"
       chmod +x /home/core/*
-      exit 0
 
   - path: /home/core/calico-download.sh
     owner: root
     permissions: 0755
     content: |
       #! /usr/bin/bash
-      # Download calicoctl and the calico kubernetes networking plugin.
+      # Download calicoctl 
       /usr/bin/wget -N -P "/home/core" "https://github.com/Metaswitch/calico-docker/releases/download/v0.4.7/calicoctl"
 
+      # Download the calico_kubernetes plugin binary.
       # TODO: Currently using my own fork of the plugin.
-      #/usr/bin/wget -N -P "/home/core" "https://github.com/Metaswitch/calico-docker/releases/download/v0.4.2/calico_kubernetes"
       /usr/bin/wget -N -P "/home/core" "http://172.24.114.228/calico_kubernetes"
       chmod +x /home/core/calicoctl
 
-      # Move the networking plugin into the networking plugins directory.  This directory is passed to the kubelet so it 
-      # can find the plugin.
+      # Move the networking plugin into the networking plugins directory.
       mkdir -p /home/core/kubelet-net-plugins/calico
       mv /home/core/calico_kubernetes /home/core/kubelet-net-plugins/calico/calico
       chmod +x /home/core/kubelet-net-plugins/calico/calico
-      
-      # FIXME: Temporary fix to get around hardcoded calicoctl location in the calico networking plugin.
-      sudo mkdir -p /home/vagrant
-      ln -s /home/core/calicoctl /home/vagrant/calicoctl
-
-      exit 0
 
   - path: /home/core/calico-node.sh
     owner: root
     permissions: 0755
     content: |
       #! /usr/bin/bash
+      # Usage: calico-node.sh <node ip> <etcd authority>
+
+      # Install necessary kernel modules
       sudo modprobe xt_set
       sudo modprobe ip6_tables
+      
+      # Start the Calico node
       sudo ETCD_AUTHORITY=$2 /home/core/calicoctl node --ip=$1
+
       # FIXME: Instead, configure default docker pool
       ETCD_AUTHORITY=$2 /home/core/calicoctl pool add 172.17.0.0/16
-      exit 0
-
-  - path: /etc/profile.d/opt-path.sh
-    owner: root
-    permissions: 0755
-    content: |
-      #! /usr/bin/bash
-      PATH=$PATH:/home/core
 
 coreos:
   update:

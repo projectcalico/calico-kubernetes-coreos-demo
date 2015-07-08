@@ -33,7 +33,6 @@ write_files:
       /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-apiserver"
       /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-scheduler"
       chmod +x /home/core/*
-      exit 0
 
 coreos:
   update:
