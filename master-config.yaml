@@ -1,0 +1,124 @@
+#cloud-config
+---
+hostname: kube-master
+users:
+  - name: core
+    ssh-authorized-keys: 
+      - ssh-rsa <SSH_PUBLIC_KEY>
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    groups: sudo
+    shell: /bin/bash
+
+write_files:
+  - path: /etc/network-environment 
+    owner: root
+    permissions: 0755
+    content: |
+      #! /usr/bin/bash
+      # The master's IPv4 address - reachable by the kubernetes nodes.
+      DEFAULT_IPV4=<DEFAULT_IPV4>
+      
+      # Location of the kubernetes binaries.
+      KUBERNETES_IP=<KUBERNETES_IP>
+
+  - path: /home/core/kubernetes-download.sh
+    owner: root
+    permissions: 0755
+    content: |
+      #! /usr/bin/bash
+      # Download kubernetes binaries from the following location.
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kubectl"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kubernetes"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kube-controller-manager"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kube-apiserver"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kube-scheduler"
+      chmod +x /home/core/*
+      exit 0
+
+coreos:
+  update:
+    reboot-strategy: off
+  units:
+    - name: get-kube-tools.service
+      runtime: true
+      command: start
+      content: |
+        [Unit]
+        Description=Installs Kubernetes tools
+        After=network-online.service
+        [Service]
+        EnvironmentFile=/etc/network-environment
+        ExecStart=/home/core/kubernetes-download.sh
+        RemainAfterExit=yes
+        Type=oneshot
+
+    - name: etcd.service
+      runtime: true
+      command: start
+      content: |
+        [Unit]
+        Description=etcd
+        After=network-online.service
+        [Service]
+        EnvironmentFile=/etc/network-environment
+        User=etcd
+        PermissionsStartOnly=true
+        ExecStart=/usr/bin/etcd \
+        --name ${DEFAULT_IPV4} \
+        --addr ${DEFAULT_IPV4}:4001 \
+        --bind-addr 0.0.0.0 \
+        --cluster-active-size 1 \
+        --data-dir /var/lib/etcd \
+        --http-read-timeout 86400 \
+        --peer-addr ${DEFAULT_IPV4}:7001 \
+        --snapshot true
+        Restart=always
+        RestartSec=10s
+
+    - name: kube-apiserver.service
+      runtime: true
+      command: start
+      content: |
+        [Unit]
+        Description=Kubernetes API Server
+        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+        Requires=etcd.service
+        After=etcd.service
+        [Service]
+        ExecStart=/home/core/kube-apiserver \
+        --address=0.0.0.0 \
+        --port=8080 \
+        --etcd_servers=http://127.0.0.1:4001 \
+        --logtostderr=true
+        Restart=always
+        RestartSec=10
+
+    - name: kube-controller-manager.service 
+      runtime: true
+      command: start
+      content: |
+        [Unit]
+        Description=Kubernetes Controller Manager
+        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+        Requires=etcd.service
+        After=etcd.service
+        [Service]
+        ExecStart=/home/core/kube-controller-manager \
+        --master=127.0.0.1:8080 \
+        --logtostderr=true
+        Restart=always
+        RestartSec=10
+
+    - name: kube-scheduler.service
+      runtime: true
+      command: start
+      content: |
+        [Unit]
+        Description=Kubernetes Scheduler
+        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+        Requires=etcd.service
+        After=etcd.service
+        [Service]
+        ExecStart=/home/core/kube-scheduler --master=127.0.0.1:8080
+        Restart=always
+        RestartSec=10
