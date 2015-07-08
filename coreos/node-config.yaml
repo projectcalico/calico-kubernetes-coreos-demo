@@ -5,8 +5,8 @@ users:
   - name: core
     ssh-authorized-keys: 
       - ssh-rsa <SSH_PUBLIC_KEY> 
-    sudo: ['ALL=(ALL) NOPASSWD:ALL']
-    groups: sudo
+    groups: 
+      - sudo
     shell: /bin/bash
 
 write_files:

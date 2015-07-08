@@ -5,8 +5,8 @@ users:
   - name: core
     ssh-authorized-keys: 
       - ssh-rsa <SSH_PUBLIC_KEY>
-    sudo: ['ALL=(ALL) NOPASSWD:ALL']
-    groups: sudo
+    groups: 
+      - sudo
     shell: /bin/bash
 
 write_files:
@@ -87,6 +87,7 @@ coreos:
         ExecStart=/home/core/kube-apiserver \
         --address=0.0.0.0 \
         --port=8080 \
+        --service-cluster-ip-range=10.100.0.0/16 \
         --etcd_servers=http://127.0.0.1:4001 \
         --logtostderr=true
         Restart=always
