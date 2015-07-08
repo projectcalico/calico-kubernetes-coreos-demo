@@ -19,7 +19,7 @@ write_files:
       DEFAULT_IPV4=<DEFAULT_IPV4>
       
       # Location of the kubernetes binaries.
-      KUBERNETES_IP=<KUBERNETES_IP>
+      KUBERNETES_LOC=<KUBERNETES_IP>
 
   - path: /home/core/kubernetes-download.sh
     owner: root
@@ -27,11 +27,11 @@ write_files:
     content: |
       #! /usr/bin/bash
       # Download kubernetes binaries from the following location.
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kubectl"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kubernetes"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kube-controller-manager"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kube-apiserver"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_IP/kube-scheduler"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubectl"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubernetes"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-controller-manager"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-apiserver"
+      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-scheduler"
       chmod +x /home/core/*
       exit 0
 

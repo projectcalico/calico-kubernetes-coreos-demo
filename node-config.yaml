@@ -76,7 +76,6 @@ write_files:
       sudo ETCD_AUTHORITY=$2 /home/core/calicoctl node --ip=$1
       # FIXME: Instead, configure default docker pool
       ETCD_AUTHORITY=$2 /home/core/calicoctl pool add 172.17.0.0/16
-      touch /home/calico-node-$1-$2
       exit 0
 
   - path: /etc/profile.d/opt-path.sh
