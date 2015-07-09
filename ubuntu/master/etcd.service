@@ -8,6 +8,8 @@ User=calico
 PermissionsStartOnly=true
 ExecStart=/usr/bin/etcd \
 --name ${DEFAULT_IPV4} \
---data-dir /var/lib/etcd
+--addr ${DEFAULT_IPV4}:4001 \
+--data-dir /var/lib/etcd \
+--bind-addr 0.0.0.0:4001
 Restart=always
 RestartSec=10s
