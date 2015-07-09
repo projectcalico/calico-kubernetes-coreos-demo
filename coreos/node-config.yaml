@@ -1,6 +1,6 @@
 #cloud-config
 ---
-hostname: kube-node1
+hostname: <HOSTNAME>
 users:
   - name: core
     ssh-authorized-keys: 
@@ -23,16 +23,17 @@ write_files:
 
       # Location of etcd cluster used by Calico.  By default, this uses the etcd
       # instance running on the Kubernetes Master
-      ETCD_AUTHORITY=${KUBERNETES_MASTER}:4001
+      ETCD_AUTHORITY=<KUBERNETES_MASTER>:4001
       
       # Location from which to download the Kubernetes binaries
       KUBERNETES_LOC=<KUBERNETES_LOC>
 
+      # The kubernetes-apiserver location - used by the calico plugin
+      KUBE_API_ROOT=https://<KUBERNETES_MASTER>:443/api/v1/
+
       # Location of the calicoctl binary - used by the calico plugin
       CALICOCTL_PATH=/home/core/calicoctl
 
-      # The kubernetes-apiserver location - used by the calico plugin
-      KUBE_API_ROOT=https://$KUBERNETES_MASTER:443/api/v1/
 
   - path: /home/core/kubernetes-download.sh
     owner: root
