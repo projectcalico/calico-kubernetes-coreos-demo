@@ -1,6 +1,6 @@
 #cloud-config
 ---
-hostname: <HOSTNAME>
+hostname: <HOSTNAME> 
 users:
   - name: core
     ssh-authorized-keys: 
@@ -10,23 +10,18 @@ users:
     shell: /bin/bash
 
 write_files:
-  - path: /etc/network-environment 
+  - path: /etc/other-environment 
     owner: root
     permissions: 0755
-    content: |
-      #! /usr/bin/bash
-      # This node's IPv4 address
-      DEFAULT_IPV4=<DEFAULT_IPV4>
+    content: |      
+      # Location from which to download the Kubernetes binaries
+      KUBERNETES_LOC=<KUBERNETES_LOC>
 
       # The kubernetes master IP
       KUBERNETES_MASTER=<KUBERNETES_MASTER>
 
-      # Location of etcd cluster used by Calico.  By default, this uses the etcd
-      # instance running on the Kubernetes Master
+      # Location of etcd cluster used by Calico.
       ETCD_AUTHORITY=<KUBERNETES_MASTER>:4001
-      
-      # Location from which to download the Kubernetes binaries
-      KUBERNETES_LOC=<KUBERNETES_LOC>
 
       # The kubernetes-apiserver location - used by the calico plugin
       KUBE_API_ROOT=https://<KUBERNETES_MASTER>:443/api/v1/
@@ -56,8 +51,7 @@ write_files:
       /usr/bin/wget -N -P "/home/core" "https://github.com/Metaswitch/calico-docker/releases/download/v0.4.7/calicoctl"
 
       # Download the calico_kubernetes plugin binary.
-      # TODO: Currently using my own fork of the plugin.
-      /usr/bin/wget -N -P "/home/core" "http://172.24.114.228/calico_kubernetes"
+      /usr/bin/wget -N -P "/home/core" "https://github.com/Metaswitch/calico-docker/releases/download/v0.4.8/calico_kubernetes"
       chmod +x /home/core/calicoctl
 
       # Move the networking plugin into the networking plugins directory.
@@ -94,10 +88,29 @@ coreos:
         [Unit]
         Description=Downloads Kubernetes binaries 
         After=network-online.service
+
         [Service]
-        EnvironmentFile=/etc/network-environment
+        EnvironmentFile=/etc/other-environment
         ExecStartPre=-/usr/bin/mkdir -p /home/core
         ExecStart=/home/core/kubernetes-download.sh
+        RemainAfterExit=yes
+        Type=oneshot
+
+    - name: setup-network-environment.service
+      runtime: true
+      command: start
+      content: |
+        [Unit]
+        Description=Setup Network Environment
+        Documentation=https://github.com/kelseyhightower/setup-network-environment
+        Requires=network-online.target
+        After=network-online.target
+
+        [Service]
+        ExecStartPre=-/usr/bin/mkdir -p /opt/bin
+        ExecStartPre=/usr/bin/wget -N -P /opt/bin https://github.com/kelseyhightower/setup-network-environment/releases/download/v1.0.0/setup-network-environment
+        ExecStartPre=/usr/bin/chmod +x /opt/bin/setup-network-environment
+        ExecStart=/opt/bin/setup-network-environment
         RemainAfterExit=yes
         Type=oneshot
 
@@ -107,7 +120,9 @@ coreos:
       content: |
         [Unit]
         Description=Downloads the Calico binaries
-        After=network-online.service
+        Requires=setup-network-environment.service
+        After=setup-network-environment.service
+
         [Service]
         ExecStartPre=-/usr/bin/mkdir -p /home/core
         ExecStart=/home/core/calico-download.sh
@@ -120,9 +135,12 @@ coreos:
       content: |
         [Unit]
         Description=calicoctl node
-        After=get-calico-tools.service
+        Requires=docker.service
+        After=docker.service
+
         [Service]
         EnvironmentFile=/etc/network-environment
+        EnvironmentFile=/etc/other-environment
         User=root
         PermissionsStartOnly=true
         ExecStart=/home/core/calico-node.sh $DEFAULT_IPV4 $ETCD_AUTHORITY
@@ -135,9 +153,12 @@ coreos:
         [Unit]
         Description=Kubernetes Proxy
         Documentation=https://github.com/GoogleCloudPlatform/kubernetes
-        After=calico-node.service
+        Requires=setup-network-environment.service
+        After=setup-network-environment.service
+
         [Service]
         EnvironmentFile=/etc/network-environment
+        EnvironmentFile=/etc/other-environment
         ExecStart=/home/core/kube-proxy --master=http://${KUBERNETES_MASTER}:8080 --logtostderr=true
         Restart=always
         RestartSec=10
@@ -148,9 +169,12 @@ coreos:
         [Unit]
         Description=Kubernetes Kubelet
         Documentation=https://github.com/GoogleCloudPlatform/kubernetes
-        After=calico-node.service
+        Requires=setup-network-environment.service
+        After=setup-network-environment.service
+
         [Service]
         EnvironmentFile=/etc/network-environment
+        EnvironmentFile=/etc/other-environment
         ExecStart=/home/core/kubelet \
         --v=5 \
         --address=0.0.0.0 \
