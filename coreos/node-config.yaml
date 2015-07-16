@@ -29,7 +29,6 @@ write_files:
       # Location of the calicoctl binary - used by the calico plugin
       CALICOCTL_PATH=/home/core/calicoctl
 
-
   - path: /home/core/kubernetes-download.sh
     owner: root
     permissions: 0755
@@ -69,18 +68,32 @@ write_files:
       # Install necessary kernel modules
       sudo modprobe xt_set
       sudo modprobe ip6_tables
+      sudo /home/core/calicoctl checksystem --fix
       
       # Start the Calico node
       sudo ETCD_AUTHORITY=$2 /home/core/calicoctl node --ip=$1
-
-      # FIXME: Instead, configure default docker pool
-      ETCD_AUTHORITY=$2 /home/core/calicoctl pool add 172.17.0.0/16
 
 coreos:
   update:
     reboot-strategy: off
 
   units:
+    - name: cbr0.netdev 
+      command: start
+      content: |
+        [NetDev]
+        Name=cbr0
+        Kind=bridge
+
+    - name: cbr0.network
+      command: start
+      content: |
+        [Match]
+        Name=cbr0
+         
+        [Network]
+        Address=<DOCKER_BRIDGE_IP>
+
     - name: get-kube-tools.service
       runtime: true
       command: start
@@ -188,3 +201,22 @@ coreos:
         --logtostderr=true
         Restart=always
         RestartSec=10
+
+    - name: docker.service
+      command: start
+      content: |
+        [Unit]
+        Description=Docker Application Container Engine
+        Documentation=http://docs.docker.com
+        After=docker.socket early-docker.target network.target setup-network-environment.service
+        Requires=docker.socket early-docker.target setup-network-environment.service
+  
+        [Service]
+        Environment=TMPDIR=/var/tmp
+        MountFlags=slave
+        LimitNOFILE=1048576
+        LimitNPROC=1048576
+        ExecStart=/usr/lib/coreos/dockerd --daemon --host=fd:// --bridge=cbr0 --iptables=false --ip-masq=false
+  
+        [Install]
+        WantedBy=multi-user.target
