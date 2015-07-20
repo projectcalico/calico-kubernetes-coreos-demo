@@ -58,9 +58,12 @@ write_files:
       TEMP_PLUGIN_DIR=`mktemp`
       echo "Using tmp plugin dir ${TEMP_PLUGIN_DIR}"
       
-      # Start the Calico node
-      mkdir -p /etc/kubelet-plugins
-      sudo ETCD_AUTHORITY=$2 /home/core/calicoctl node --ip=$1 --kubernetes --plugin-dir=$TEMP_PLUGIN_DIR
+      # Start the Calico node. TODO: Use the --kubernetes flag when starting Calico node.
+      sudo /usr/bin/mkdir -p /etc/kubelet-plugins/calico
+      sudo /usr/bin/wget -N -P "/etc/kubelet-plugins/calico" "https://github.com/Metaswitch/calico-docker/releases/download/v0.5.1/calico_kubernetes"
+      sudo mv /etc/kubelet-plugins/calico/calico_kubernetes /etc/kubelet-plugins/calico/calico
+      sudo /usr/bin/chmod +x /etc/kubelet-plugins/calico
+      sudo ETCD_AUTHORITY=$2 /home/core/calicoctl node --ip=$1 --plugin-dir=$TEMP_PLUGIN_DIR
 
 coreos:
   update:
