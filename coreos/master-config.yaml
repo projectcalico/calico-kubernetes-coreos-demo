@@ -22,13 +22,15 @@ write_files:
     permissions: 0755
     content: |
       #! /usr/bin/bash
+      # Network not always up, ping to wait for internet connection
+      while ! ping -c 1 $KUBERNETES_LOC; do :; done
       # Download kubernetes binaries from the following location.
       /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubectl"
       /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubernetes"
       /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-controller-manager"
       /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-apiserver"
       /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-scheduler"
-      chmod +x /home/core/*
+      sudo chmod +x /home/core/*
 
   - path: /home/core/calico-node.sh
     owner: root
