@@ -34,8 +34,8 @@ write_files:
     permissions: 0755
     content: |
       #! /usr/bin/bash
-      # network not always up, ping to wait for internet connection
-      ping google.com -c 5
+      # Network not always up, ping to wait for internet connection
+      while ! ping -c 1 $KUBERNETES_LOC; do :; done
       # Download kubernetes binaries
       /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubectl"
       /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubernetes"
