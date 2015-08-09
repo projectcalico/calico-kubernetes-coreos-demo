@@ -14,7 +14,7 @@ write_files:
     owner: root
     permissions: 0755
     content: |
-      #  Location of the kubernetes binaries e.g. http(s)://yourserver.net/path/to/files
+      # Location of the kubernetes binaries e.g. http(s)://yourserver.net/path/to/files
       KUBERNETES_LOC=<KUBERNETES_LOC>
 
   - path: /home/core/kubernetes-download.sh
