@@ -130,7 +130,7 @@ coreos:
         User=root
         PermissionsStartOnly=true
         ExecStartPre=-/usr/bin/wget -N -P "/home/core" "https://github.com/Metaswitch/calico-docker/releases/download/v0.5.1/calicoctl"
-        ExecStartPre=-chmod +x /home/core/calicoctl
+        ExecStartPre=chmod +x /home/core/calicoctl
         ExecStart=/home/core/calico-node.sh $DEFAULT_IPV4
         RemainAfterExit=yes
         Type=oneshot
