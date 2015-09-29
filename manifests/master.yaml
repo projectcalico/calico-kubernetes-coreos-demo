@@ -23,18 +23,7 @@ spec:
     - name: "lib64"
       hostPath:
         path: "/lib64"
-  containers: 
-    - name: "etcd"
-      image: "b.gcr.io/kuar/etcd:2.1.1"
-      args: 
-        - "--data-dir=/var/lib/etcd"
-        - "--advertise-client-urls=http://127.0.0.1:2379"
-        - "--listen-client-urls=http://127.0.0.1:2379"
-        - "--listen-peer-urls=http://127.0.0.1:2380"
-        - "--name=etcd"
-      volumeMounts:
-        - mountPath: /var/lib/etcd
-          name: "etcd-datadir"
+  containers:
     - name: "kube-apiserver"
       image: "b.gcr.io/kuar/kube-apiserver:1.0.3"
       args: 
