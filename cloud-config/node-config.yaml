@@ -1,201 +1,135 @@
 #cloud-config
----
-hostname: <HOSTNAME> 
-users:
-  - name: core
-    ssh-authorized-keys: 
-      - <SSH_PUBLIC_KEY> 
-    groups: 
-      - sudo
-    shell: /bin/bash
-
-write_files:
-  - path: /etc/other-environment 
-    owner: root
-    permissions: 0755
-    content: |      
-      # Location of the kubernetes binaries. Override this variable to use a custom version of the 
-      # kubelet or kubectl.
-      KUBERNETES_LOC=https://github.com/projectcalico/calico-kubernetes-coreos-demo/releases/download/v0.1.0
-
-      # The kubernetes master IP
-      KUBERNETES_MASTER=<KUBERNETES_MASTER>
-
-      # Location of etcd cluster used by Calico.
-      ETCD_AUTHORITY=<KUBERNETES_MASTER>:4001
-
-      # The kubernetes-apiserver location - used by the calico plugin
-      KUBE_API_ROOT=http://<KUBERNETES_MASTER>:8080/api/v1/
-
-      # Location of the calicoctl binary - used by the calico plugin
-      CALICOCTL_PATH=/opt/bin/calicoctl
-
-  - path: /opt/bin/kubernetes-download.sh
-    owner: root
-    permissions: 0755
-    content: |
-      #! /usr/bin/bash
-
-      # Download kubernetes binaries
-      /usr/bin/wget -N -P "/opt/bin" "$KUBERNETES_LOC/kube-proxy"
-      /usr/bin/wget -N -P "/opt/bin" "$KUBERNETES_LOC/kubelet"
-      sudo chmod +x /opt/bin/*
-
-  - path: /opt/bin/calico-node.sh
-    owner: root
-    permissions: 0755
-    content: |
-      #! /usr/bin/bash
-      # Usage: calico-node.sh <node ip> <etcd authority>
-
-      # Install necessary kernel modules
-      sudo modprobe xt_set
-      sudo modprobe ip6_tables
-      sudo /opt/bin/calicoctl checksystem --fix
-
-      # Create a /tmp directory for docker plugins.  We don't actually use docker plugins, 
-      # but the default docker directory is in /usr, which fails on CoreOS.
-      TEMP_PLUGIN_DIR=`mktemp`
-      echo "Using tmp plugin dir ${TEMP_PLUGIN_DIR}"
-      
-      # Start the Calico node. TODO: Use the --kubernetes flag when starting Calico node.
-      sudo /usr/bin/mkdir -p /etc/kubelet-plugins/calico
-      sudo /usr/bin/wget -N -P "/etc/kubelet-plugins/calico" "https://github.com/Metaswitch/calico-docker/releases/download/v0.5.1/calico_kubernetes"
-      sudo mv /etc/kubelet-plugins/calico/calico_kubernetes /etc/kubelet-plugins/calico/calico
-      sudo /usr/bin/chmod +x /etc/kubelet-plugins/calico/calico
-      sudo ETCD_AUTHORITY=$2 /opt/bin/calicoctl node --ip=$1 --plugin-dir=$TEMP_PLUGIN_DIR
 
 coreos:
   update:
-    reboot-strategy: off
-
+    reboot-strategy: 'off'
+  fleet:
+    public-ip: $public_ipv4
+    etcd_servers: http://<MASTER>:4001
   units:
-    - name: cbr0.netdev 
-      command: start
-      content: |
-        [NetDev]
-        Name=cbr0
-        Kind=bridge
+  - name: fleet.service
+    command: start
+#cloud-config
 
-    - name: cbr0.network
-      command: start
-      content: |
-        [Match]
-        Name=cbr0
-         
-        [Network]
-        Address=<DOCKER_BRIDGE_IP>
+coreos:
+  update:
+    reboot-strategy: 'off'
+  fleet:
+    public-ip: $public_ipv4
+    etcd_servers: http://<MASTER>:4001
+  units:
+  - name: fleet.service
+    command: start
+  - name: setup-network-environment.service
+    runtime: true
+    command: start
+    content: |
+      [Unit]
+      Description=Setup Network Environment
+      Documentation=https://github.com/kelseyhightower/setup-network-environment
+      Requires=network-online.target
+      After=network-online.target
+      [Service]
+      ExecStartPre=-/usr/bin/mkdir -p /opt/bin
+      ExecStartPre=/usr/bin/wget -N -P /opt/bin https://github.com/kelseyhightower/setup-network-environment/releases/download/1.0.1/setup-network-environment
+      ExecStartPre=/usr/bin/chmod +x /opt/bin/setup-network-environment
+      ExecStart=/opt/bin/setup-network-environment
+      RemainAfterExit=yes
+      Type=oneshot
 
-    - name: get-kube-tools.service
-      runtime: true
-      command: start
-      content: |
-        [Unit]
-        Description=Downloads Kubernetes binaries 
-        After=network-online.service
+  - name: calico-node.service
+    runtime: true
+    command: start
+    content: |
+      [Unit]
+      Description=Start Calico on this node
+      Requires=docker.service etcd2.service
+      After=docker.service setup-network-environment.service
+      [Service]
+      EnvironmentFile=/etc/network-environment
+      EnvironmentFile=/etc/other-environment
+      User=root
+      PermissionsStartOnly=true
+      ExecStartPre=-/usr/bin/sudo /usr/bin/wget -N -P "/opt/bin" "https://github.com/projectcalico/calico-docker/releases/download/v0.7.0/calicoctl"
+      ExecStartPre=-/usr/bin/chmod +x /opt/bin/calicoctl
+      ExecStart=/usr/bin/sudo /opt/bin/calicoctl node --kubernetes
+      Restart=on-failure
+      RestartSec=5
 
-        [Service]
-        EnvironmentFile=/etc/other-environment
-        ExecStartPre=-/usr/bin/mkdir -p /opt/bin
-        ExecStart=/opt/bin/kubernetes-download.sh
-        RemainAfterExit=yes
-        Type=oneshot
+  - name: kubelet.service
+    runtime: true
+    command: start
+    content: |
+      [Unit]
+      Description=Kubernetes Kubelet
+      Documentation=https://github.com/kubernetes/kubernetes
+      After=calico-node.service
+      Requires=calico-node.service
+      
+      [Service]
+      EnvironmentFile=/etc/other-environment
+      ExecStartPre=/usr/bin/mkdir -p /etc/kubernetes/manifests
+      ExecStart=/opt/bin/kubelet \
+        --api-servers=http://<MASTER>:8080 \
+        --allow-privileged=true \
+        --config=/etc/kubernetes/manifests \
+        --network-plugin=calico \
+        --network-plugin-dir=/etc/kubelet-plugins \
+        --v=5
+      Restart=on-failure
+      RestartSec=5
+      
+      [Install]
+      WantedBy=multi-user.target
 
-    - name: setup-network-environment.service
-      runtime: true
-      command: start
-      content: |
-        [Unit]
-        Description=Setup Network Environment
-        Documentation=https://github.com/kelseyhightower/setup-network-environment
-        Requires=network-online.target
-        After=network-online.target
+write_files:
+- path: /home/core/add_path.sh
+  permissions: 777
+  owner: root
+  content: |
+    #!/usr/bin/bash -e
+    # Add /opt/bin to the _front_ of the PATH.
+    # Can't directly write to .profile since it's a symlink to a RO filesystem
+    mkdir -p /opt/bin
+    rm /home/core/.bashrc
+    echo 'PATH=/opt/bin:$PATH' > /home/core/.bashrc
+    echo 'export ETCD_AUTHORITY="$private_ipv4:4001"' >> /home/core/.bashrc
+    echo 'Defaults env_keep +="ETCD_AUTHORITY"' >>/etc/sudoers.d/etcd
 
-        [Service]
-        ExecStartPre=-/usr/bin/mkdir -p /opt/bin
-        ExecStartPre=/usr/bin/wget -N -P /opt/bin https://github.com/kelseyhightower/setup-network-environment/releases/download/v1.0.0/setup-network-environment
-        ExecStartPre=/usr/bin/chmod +x /opt/bin/setup-network-environment
-        ExecStart=/opt/bin/setup-network-environment
-        RemainAfterExit=yes
-        Type=oneshot
+- path: /home/core/get_calicoctl.sh
+  permissions: 777
+  owner: root
+  content: |
+    #!/usr/bin/bash -e
+    wget -O /opt/bin/calicoctl https://github.com/projectcalico/calico-docker/releases/download/v0.7.0/calicoctl
+    chmod +x /opt/bin/calicoctl
+    /opt/bin/calicoctl checksystem --fix
 
-    - name: calico-node.service
-      runtime: true
-      command: start
-      content: |
-        [Unit]
-        Description=Start Calico on this node
-        Requires=docker.service
-        After=docker.service
+- path: /etc/other-environment 
+  owner: root
+  permissions: 0755
+  content: |
+    # Location of the kubernetes binaries. Override this variable to use a custom version of the 
+    # kubelet or kubectl.
+    KUBERNETES_LOC=https://github.com/projectcalico/calico-kubernetes-coreos-demo/releases/download/v0.1.0
+    # Path to calicoctl - needed by network plugin. 
+    CALICOCTL_PATH=/opt/bin/calicoctl
+    # Use the local ETCD instance
+    KUBERNETES_MASTER=<MASTER>
+    ETCD_AUTHORITY=<MASTER>:4001
+    KUBE_API_ROOT=http://<MASTER>:8080/api/v1/
+    # Enable Calico IPAM
+    CALICO_IPAM=true
 
-        [Service]
-        EnvironmentFile=/etc/network-environment
-        EnvironmentFile=/etc/other-environment
-        User=root
-        PermissionsStartOnly=true
-        ExecStartPre=-/usr/bin/wget -N -P "/opt/bin" "https://github.com/Metaswitch/calico-docker/releases/download/v0.5.1/calicoctl"
-        ExecStartPre=-/usr/bin/chmod +x /opt/bin/calicoctl
-        ExecStart=/opt/bin/calico-node.sh $DEFAULT_IPV4 $ETCD_AUTHORITY
-        RemainAfterExit=yes
-        Type=oneshot
-
-    - name: kube-proxy.service
-      command: start
-      content: |
-        [Unit]
-        Description=Kubernetes Proxy
-        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
-        Requires=setup-network-environment.service
-        After=setup-network-environment.service
-
-        [Service]
-        EnvironmentFile=/etc/network-environment
-        EnvironmentFile=/etc/other-environment
-        ExecStart=/opt/bin/kube-proxy --master=http://${KUBERNETES_MASTER}:8080 --logtostderr=true
-        Restart=always
-        RestartSec=10
-
-    - name: kube-kubelet.service
-      command: start
-      content: |
-        [Unit]
-        Description=Kubernetes Kubelet
-        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
-        Requires=setup-network-environment.service 
-        After=setup-network-environment.service calico-node.service
-
-        [Service]
-        EnvironmentFile=/etc/network-environment
-        EnvironmentFile=/etc/other-environment
-        ExecStart=/opt/bin/kubelet \
-        --v=5 \
-        --address=0.0.0.0 \
-        --port=10250 \
-        --hostname_override=${DEFAULT_IPV4} \
-        --api_servers=${KUBERNETES_MASTER}:8080 \
-        --healthz_bind_address=0.0.0.0 \
-        --healthz_port=10248 \
-        --network_plugin=calico \
-        --network_plugin_dir=/etc/kubelet-plugins \
-        --logtostderr=true
-        Restart=always
-        RestartSec=10
-
-    - name: docker.service
-      command: start
-      content: |
-        [Unit]
-        Description=Docker Application Container Engine
-        Documentation=http://docs.docker.com
-        After=docker.socket early-docker.target network.target setup-network-environment.service
-        Requires=docker.socket early-docker.target setup-network-environment.service
-  
-        [Service]
-        Environment=TMPDIR=/var/tmp
-        MountFlags=slave
-        LimitNOFILE=1048576
-        LimitNPROC=1048576
-        ExecStart=/usr/lib/coreos/dockerd --daemon --host=fd:// --bridge=cbr0 --iptables=false --ip-masq=false
-  
-        [Install]
-        WantedBy=multi-user.target
+- path: /opt/bin/kubernetes-download.sh
+  owner: root
+  permissions: 0755
+  content: |
+    #! /usr/bin/bash
+    print "Downloading Kubernetes"
+    # Download kubernetes binaries from the given location.
+    /usr/bin/wget -N -P "/opt/bin" "$KUBERNETES_LOC/kubectl"
+    /usr/bin/wget -N -P "/opt/bin" "$KUBERNETES_LOC/kubelet"
+    sudo chmod +x /opt/bin/*
+    # Install the Kubernetes master node manifest.
+    /usr/bin/wget -N -P "/etc/kubernetes/manifests" "https://raw.githubusercontent.com/projectcalico/calico-kubernetes-coreos-demo/ah3-config-update/manifests/master.yaml"
