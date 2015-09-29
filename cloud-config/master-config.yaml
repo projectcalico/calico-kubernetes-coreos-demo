@@ -1,10 +1,10 @@
 #cloud-config
 ---
-hostname: kube-master
+hostname: kubernetes-master
 users:
   - name: core
     ssh-authorized-keys: 
-      - <SSH_PUBLIC_KEY>
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDID0OnaJXjKVkAyFvJ3Y6p5NeaCyiJUkwBFbmXWCOgH32bvvUtcVNYQCxrNq8Bwy79miJPmMKuQ4JaUxPLI5nzjjXPIrZOJc8VSt3+zVK+KQB9KDY1NnOe7M36SE6Gj+sg78TVp8lZt0eyheAXSt3SErZp4QoWIbF77bPOKHxEfJSFgaMWzL8RQlKl/Iazo1Z+hwuix8tCW378IPTw9BaqfOXpKVsJUZsNc37iWo4qDUZi51Ruqmxj6oJnx6HA57iywB+eysoKRmIMojyr9KR379N6wTyva5uroHweWiGEparBC9/wxTw8KC178lx94oR5glyZhNBEGwK+MlfsyR/P cd4@illium 
     groups: 
       - sudo
     shell: /bin/bash
@@ -14,51 +14,38 @@ write_files:
     owner: root
     permissions: 0755
     content: |
-      # Location of the kubernetes binaries.
-      KUBERNETES_LOC=<KUBERNETES_LOC>
+      # Location of the kubernetes binaries. Override this variable to use a custom version of the 
+      # kubelet or kubectl.
+      KUBERNETES_LOC=https://github.com/projectcalico/calico-kubernetes-coreos-demo/releases/download/v0.1.0
 
-  - path: /home/core/kubernetes-download.sh
+      # Path to calicoctl - needed by network plugin. 
+      CALICOCTL_PATH=/opt/bin/calicoctl
+
+      # Use the local ETCD instance
+      ETCD_AUTHORITY=127.0.0.1:4001
+
+      # Enable Calico IPAM
+      CALICO_IPAM=true
+
+  - path: /opt/bin/kubernetes-download.sh
     owner: root
     permissions: 0755
     content: |
       #! /usr/bin/bash
-      # Network not always up, ping to wait for internet connection
-      while ! ping -c 1 $KUBERNETES_LOC; do :; done
-      # Download kubernetes binaries from the following location.
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubectl"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubernetes"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-controller-manager"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-apiserver"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-scheduler"
-      sudo chmod +x /home/core/*
+      print "Downloading Kubernetes"
+      # Download kubernetes binaries from the given location.
+      /usr/bin/wget -N -P "/opt/bin" "$KUBERNETES_LOC/kubectl"
+      /usr/bin/wget -N -P "/opt/bin" "$KUBERNETES_LOC/kubelet"
+      sudo chmod +x /opt/bin/*
 
-  - path: /home/core/calico-node.sh
-    owner: root
-    permissions: 0755
-    content: |
-      #! /usr/bin/bash
-      # Usage: calico-node.sh <node ip> 
-
-      # Install necessary kernel modules
-      sudo modprobe xt_set
-      sudo modprobe ip6_tables
-      sudo /home/core/calicoctl checksystem --fix
-
-      # Create a /tmp directory for docker plugins.  We don't actually use docker plugins, 
-      # but the default docker directory is in /usr, which fails on CoreOS.
-      TEMP_PLUGIN_DIR=`mktemp`
-      echo "Using tmp plugin dir ${TEMP_PLUGIN_DIR}"
-      
-      # Start the Calico node.  Don't need the --kubernetes flag, since the Master does
-      # not run the Kubelet.
-      sudo ETCD_AUTHORITY=127.0.0.1:4001 /home/core/calicoctl node --ip=$1 --plugin-dir=$TEMP_PLUGIN_DIR
-
+      # Install the Kubernetes master node manifest.
+      /usr/bin/wget -N -P "/etc/kubernetes/manifests" "https://raw.githubusercontent.com/coreos/pods/master/kubernetes.yaml"
 
 coreos:
   update:
     reboot-strategy: off
   units:
-    - name: get-kube-tools.service
+    - name: download-kubernetes.service
       runtime: true
       command: start
       content: |
@@ -67,7 +54,7 @@ coreos:
         After=network-online.service
         [Service]
         EnvironmentFile=/etc/other-environment
-        ExecStart=/home/core/kubernetes-download.sh
+        ExecStart=/opt/bin/kubernetes-download.sh
         RemainAfterExit=yes
         Type=oneshot
 
@@ -83,37 +70,11 @@ coreos:
 
         [Service]
         ExecStartPre=-/usr/bin/mkdir -p /opt/bin
-        ExecStartPre=/usr/bin/wget -N -P /opt/bin https://github.com/kelseyhightower/setup-network-environment/releases/download/v1.0.0/setup-network-environment
+        ExecStartPre=/usr/bin/wget -N -P /opt/bin https://github.com/kelseyhightower/setup-network-environment/releases/download/1.0.1/setup-network-environment
         ExecStartPre=/usr/bin/chmod +x /opt/bin/setup-network-environment
         ExecStart=/opt/bin/setup-network-environment
         RemainAfterExit=yes
         Type=oneshot
-
-    - name: etcd.service
-      runtime: true
-      command: start
-      content: |
-        [Unit]
-        Description=etcd
-        Requires=setup-network-environment.service
-        After=setup-network-environment.service
-
-        [Service]
-        EnvironmentFile=/etc/network-environment
-        EnvironmentFile=/etc/other-environment
-        User=etcd
-        PermissionsStartOnly=true
-        ExecStart=/usr/bin/etcd \
-        --name ${DEFAULT_IPV4} \
-        --addr ${DEFAULT_IPV4}:4001 \
-        --bind-addr 0.0.0.0 \
-        --cluster-active-size 1 \
-        --data-dir /var/lib/etcd \
-        --http-read-timeout 86400 \
-        --peer-addr ${DEFAULT_IPV4}:7001 \
-        --snapshot true
-        Restart=always
-        RestartSec=10s
 
     - name: calico-node.service
       runtime: true
@@ -122,67 +83,43 @@ coreos:
         [Unit]
         Description=Start Calico on this node
         Requires=docker.service etcd.service
-        After=docker.service setup-network-environment.service etcd.service
+        After=docker.service setup-network-environment.service
 
         [Service]
         EnvironmentFile=/etc/network-environment
         EnvironmentFile=/etc/other-environment
         User=root
         PermissionsStartOnly=true
-        ExecStartPre=-/usr/bin/wget -N -P "/home/core" "https://github.com/Metaswitch/calico-docker/releases/download/v0.5.1/calicoctl"
-        ExecStartPre=-chmod +x /home/core/calicoctl
-        ExecStart=/home/core/calico-node.sh $DEFAULT_IPV4
-        RemainAfterExit=yes
-        Type=oneshot
+        ExecStartPre=-/usr/bin/sudo /usr/bin/wget -N -P "/opt/bin" "https://github.com/projectcalico/calico-docker/releases/download/v0.6.0/calicoctl"
+        ExecStartPre=-/usr/bin/chmod +x /opt/bin/calicoctl
+        ExecStartPre=/usr/bin/mkdir -p /etc/kubernetes/network-plugins
+        ExecStartPre=-/usr/bin/sudo /opt/bin/calicoctl checksystem --fix
+        ExecStart=/usr/bin/sudo /opt/bin/calicoctl node --kubernetes
+        Restart=on-failure
+        RestartSec=5
 
-    - name: kube-apiserver.service
+    - name: kubelet.service
       runtime: true
       command: start
       content: |
         [Unit]
-        Description=Kubernetes API Server
-        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
-        Requires=etcd.service
-        After=etcd.service
+        Description=Kubernetes Kubelet
+        Documentation=https://github.com/kubernetes/kubernetes
+        After=calico-node.service
+        Requires=calico-node.service
+        
         [Service]
-        EnvironmentFile=/etc/network-environment
         EnvironmentFile=/etc/other-environment
-        ExecStart=/home/core/kube-apiserver \
-        --address=0.0.0.0 \
-        --port=8080 \
-        --service-cluster-ip-range=10.100.0.0/16 \
-        --etcd_servers=http://127.0.0.1:4001 \
-        --public_address_override=${DEFAULT_IPV4} \
-        --logtostderr=true
-        Restart=always
-        RestartSec=10
-
-    - name: kube-controller-manager.service 
-      runtime: true
-      command: start
-      content: |
-        [Unit]
-        Description=Kubernetes Controller Manager
-        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
-        Requires=etcd.service kube-apiserver.service
-        After=etcd.service kube-apiserver.service
-        [Service]
-        ExecStart=/home/core/kube-controller-manager \
-        --master=127.0.0.1:8080 \
-        --logtostderr=true
-        Restart=always
-        RestartSec=10
-
-    - name: kube-scheduler.service
-      runtime: true
-      command: start
-      content: |
-        [Unit]
-        Description=Kubernetes Scheduler
-        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
-        Requires=etcd.service kube-apiserver.service
-        After=etcd.service kube-apiserver.service
-        [Service]
-        ExecStart=/home/core/kube-scheduler --master=127.0.0.1:8080
-        Restart=always
-        RestartSec=10
+        ExecStartPre=/usr/bin/mkdir -p /etc/kubernetes/manifests
+        ExecStart=/opt/bin/kubelet \
+          --api-servers=http://127.0.0.1:8080 \
+          --allow-privileged=true \
+          --config=/etc/kubernetes/manifests \
+          --network-plugin=calico \
+          --network-plugin-dir=/etc/kubelet-plugins \
+          --v=5
+        Restart=on-failure
+        RestartSec=5
+        
+        [Install]
+        WantedBy=multi-user.target

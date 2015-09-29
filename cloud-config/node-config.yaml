@@ -14,8 +14,9 @@ write_files:
     owner: root
     permissions: 0755
     content: |      
-      # Location from which to download the Kubernetes binaries
-      KUBERNETES_LOC=<KUBERNETES_LOC>
+      # Location of the kubernetes binaries. Override this variable to use a custom version of the 
+      # kubelet or kubectl.
+      KUBERNETES_LOC=https://github.com/projectcalico/calico-kubernetes-coreos-demo/releases/download/v0.1.0
 
       # The kubernetes master IP
       KUBERNETES_MASTER=<KUBERNETES_MASTER>
@@ -27,23 +28,20 @@ write_files:
       KUBE_API_ROOT=http://<KUBERNETES_MASTER>:8080/api/v1/
 
       # Location of the calicoctl binary - used by the calico plugin
-      CALICOCTL_PATH=/home/core/calicoctl
+      CALICOCTL_PATH=/opt/bin/calicoctl
 
-  - path: /home/core/kubernetes-download.sh
+  - path: /opt/bin/kubernetes-download.sh
     owner: root
     permissions: 0755
     content: |
       #! /usr/bin/bash
-      # Network not always up, ping to wait for internet connection
-      while ! ping -c 1 $KUBERNETES_LOC; do :; done
-      # Download kubernetes binaries
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubectl"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubernetes"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kube-proxy"
-      /usr/bin/wget -N -P "/home/core" "http://$KUBERNETES_LOC/kubelet"
-      sudo chmod +x /home/core/*
 
-  - path: /home/core/calico-node.sh
+      # Download kubernetes binaries
+      /usr/bin/wget -N -P "/opt/bin" "$KUBERNETES_LOC/kube-proxy"
+      /usr/bin/wget -N -P "/opt/bin" "$KUBERNETES_LOC/kubelet"
+      sudo chmod +x /opt/bin/*
+
+  - path: /opt/bin/calico-node.sh
     owner: root
     permissions: 0755
     content: |
@@ -53,7 +51,7 @@ write_files:
       # Install necessary kernel modules
       sudo modprobe xt_set
       sudo modprobe ip6_tables
-      sudo /home/core/calicoctl checksystem --fix
+      sudo /opt/bin/calicoctl checksystem --fix
 
       # Create a /tmp directory for docker plugins.  We don't actually use docker plugins, 
       # but the default docker directory is in /usr, which fails on CoreOS.
@@ -65,7 +63,7 @@ write_files:
       sudo /usr/bin/wget -N -P "/etc/kubelet-plugins/calico" "https://github.com/Metaswitch/calico-docker/releases/download/v0.5.1/calico_kubernetes"
       sudo mv /etc/kubelet-plugins/calico/calico_kubernetes /etc/kubelet-plugins/calico/calico
       sudo /usr/bin/chmod +x /etc/kubelet-plugins/calico/calico
-      sudo ETCD_AUTHORITY=$2 /home/core/calicoctl node --ip=$1 --plugin-dir=$TEMP_PLUGIN_DIR
+      sudo ETCD_AUTHORITY=$2 /opt/bin/calicoctl node --ip=$1 --plugin-dir=$TEMP_PLUGIN_DIR
 
 coreos:
   update:
@@ -98,8 +96,8 @@ coreos:
 
         [Service]
         EnvironmentFile=/etc/other-environment
-        ExecStartPre=-/usr/bin/mkdir -p /home/core
-        ExecStart=/home/core/kubernetes-download.sh
+        ExecStartPre=-/usr/bin/mkdir -p /opt/bin
+        ExecStart=/opt/bin/kubernetes-download.sh
         RemainAfterExit=yes
         Type=oneshot
 
@@ -135,9 +133,9 @@ coreos:
         EnvironmentFile=/etc/other-environment
         User=root
         PermissionsStartOnly=true
-        ExecStartPre=-/usr/bin/wget -N -P "/home/core" "https://github.com/Metaswitch/calico-docker/releases/download/v0.5.1/calicoctl"
-        ExecStartPre=-/usr/bin/chmod +x /home/core/calicoctl
-        ExecStart=/home/core/calico-node.sh $DEFAULT_IPV4 $ETCD_AUTHORITY
+        ExecStartPre=-/usr/bin/wget -N -P "/opt/bin" "https://github.com/Metaswitch/calico-docker/releases/download/v0.5.1/calicoctl"
+        ExecStartPre=-/usr/bin/chmod +x /opt/bin/calicoctl
+        ExecStart=/opt/bin/calico-node.sh $DEFAULT_IPV4 $ETCD_AUTHORITY
         RemainAfterExit=yes
         Type=oneshot
 
@@ -153,7 +151,7 @@ coreos:
         [Service]
         EnvironmentFile=/etc/network-environment
         EnvironmentFile=/etc/other-environment
-        ExecStart=/home/core/kube-proxy --master=http://${KUBERNETES_MASTER}:8080 --logtostderr=true
+        ExecStart=/opt/bin/kube-proxy --master=http://${KUBERNETES_MASTER}:8080 --logtostderr=true
         Restart=always
         RestartSec=10
 
@@ -169,7 +167,7 @@ coreos:
         [Service]
         EnvironmentFile=/etc/network-environment
         EnvironmentFile=/etc/other-environment
-        ExecStart=/home/core/kubelet \
+        ExecStart=/opt/bin/kubelet \
         --v=5 \
         --address=0.0.0.0 \
         --port=10250 \
