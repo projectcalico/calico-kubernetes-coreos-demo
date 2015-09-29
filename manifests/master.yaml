@@ -31,7 +31,7 @@ spec:
         - "--etcd-servers=http://127.0.0.1:4001"
         - "--insecure-bind-address=0.0.0.0"
         - "--service-cluster-ip-range=10.100.0.0/24"
-        - "-logtostderr=true"
+        - "--logtostderr=true"
         - "--v=5"
       volumeMounts:
         - mountPath: /etc/kubernetes
