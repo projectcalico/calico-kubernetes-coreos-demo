@@ -3,16 +3,30 @@
 coreos:
   update:
     reboot-strategy: 'off'
+
   etcd2:
+    # generate a new token for each unique cluster from https://discovery.etcd.io/new?size=2
+    # specify the initial size of your cluster with ?size=X
+    # discovery: https://discovery.etcd.io/<token>
+    discovery: https://discovery.etcd.io/d9cd2e4ce27e31da9e5bc34ae92afd71
+    # multi-region and multi-cloud deployments need to use $public_ipv4
     advertise-client-urls: http://$private_ipv4:2379,http://$private_ipv4:4001
+    initial-advertise-peer-urls: http://$private_ipv4:2380
     listen-client-urls: http://0.0.0.0:2379,http://0.0.0.0:4001
+    listen-peer-urls: http://$private_ipv4:2380
+
   fleet:
     public-ip: $public_ipv4
     etcd_servers: http://$private_ipv4:4001
+
   units:
   - name: fleet.service
     command: start
-  - name: download-kubernetes.service
+
+  - name: etcd2.service
+    command: start
+
+  - name: download-resources.service
     runtime: true
     command: start
     content: |
@@ -22,6 +36,8 @@ coreos:
       [Service]
       EnvironmentFile=/etc/other-environment
       ExecStart=/opt/bin/kubernetes-download.sh
+      ExecStart=/opt/bin/get_calicoctl.sh
+      ExecStart=/opt/bin/add_path.sh
       RemainAfterExit=yes
       Type=oneshot
 
@@ -49,14 +65,13 @@ coreos:
       [Unit]
       Description=Start Calico on this node
       Requires=docker.service etcd2.service
-      After=docker.service setup-network-environment.service
       [Service]
       EnvironmentFile=/etc/network-environment
       EnvironmentFile=/etc/other-environment
       User=root
       PermissionsStartOnly=true
-      ExecStartPre=-/usr/bin/sudo /usr/bin/wget -N -P "/opt/bin" "https://github.com/projectcalico/calico-docker/releases/download/v0.7.0/calicoctl"
-      ExecStartPre=-/usr/bin/chmod +x /opt/bin/calicoctl
+      ExecStartPre=-/usr/sbin/modprobe ipip
+      ExecStartPre=-/usr/sbin/modprobe xt_set
       ExecStart=/usr/bin/sudo /opt/bin/calicoctl node --kubernetes
       Restart=on-failure
       RestartSec=5
@@ -88,7 +103,7 @@ coreos:
       WantedBy=multi-user.target
 
 write_files:
-- path: /home/core/add_path.sh
+- path: /opt/bin/add_path.sh
   permissions: 777
   owner: root
   content: |
@@ -101,7 +116,7 @@ write_files:
     echo 'export ETCD_AUTHORITY="$private_ipv4:4001"' >> /home/core/.bashrc
     echo 'Defaults env_keep +="ETCD_AUTHORITY"' >>/etc/sudoers.d/etcd
 
-- path: /home/core/get_calicoctl.sh
+- path: /opt/bin/get_calicoctl.sh
   permissions: 777
   owner: root
   content: |
