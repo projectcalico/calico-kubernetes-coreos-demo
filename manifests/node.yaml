@@ -6,9 +6,25 @@ metadata:
 spec: 
   hostNetwork: true
   volumes:
+    - name: "etc-kubernetes"
+      hostPath:
+        path: "/etc/kubernetes"
     - name: "ssl-certs"
       hostPath:
         path: "/usr/share/ca-certificates"
+    - name: "var-run-kubernetes"
+      hostPath:
+        path: "/var/run/kubernetes"
+    - name: "etcd-datadir"
+      hostPath:
+        path: "/var/lib/etcd"
+    - name: "usr"
+      hostPath:
+        path: "/usr"
+    - name: "lib64"
+      hostPath:
+        path: "/lib64"
+
   containers: 
     - name: "kube-proxy"
       image: "b.gcr.io/kuar/kube-proxy:1.0.3"
