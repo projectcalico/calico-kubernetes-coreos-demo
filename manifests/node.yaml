@@ -24,12 +24,11 @@ spec:
     - name: "lib64"
       hostPath:
         path: "/lib64"
-
   containers: 
     - name: "kube-proxy"
       image: "b.gcr.io/kuar/kube-proxy:1.0.3"
       args:
-        - "--master=http://kubernetes:443"
+        - "--master=http://kube-master:443"
         - "--v=5"
       securityContext:
         privileged: true
