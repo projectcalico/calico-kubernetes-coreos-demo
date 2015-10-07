@@ -19,11 +19,11 @@
             "/usr/local/bin/etcd",
             "--name", "calico-etcd",
             "--data-dir", "/var/etcd/calico-data",
-            "--advertise-client-urls", "http://127.0.0.1:6666",
+            "--advertise-client-urls", "http://<PRIVATE_IPV4>:6666",
             "--listen-client-urls", "http://0.0.0.0:6666",
             "--listen-peer-urls", "http://0.0.0.0:6660",
-            "--initial-advertise-peer-urls", "http://127.0.0.1:6660",
-            "--initial-cluster", "calico-etcd=http://127.0.0.1:6660"
+            "--initial-advertise-peer-urls", "http://<PRIVATE_IPV4>:6660",
+            "--initial-cluster", "calico-etcd=http://<PRIVATE_IPV4>:6660"
         ],
         "ports":[
           { "name": "clientport",
