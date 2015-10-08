@@ -12,7 +12,7 @@
         "image": "gcr.io/google_containers/etcd:2.0.12",
         "resources": {
           "limits": {
-            "cpu": "200m"
+            "cpu": "100m"
           }
         },
         "command": [
