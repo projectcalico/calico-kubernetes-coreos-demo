@@ -3,14 +3,14 @@
 hostname: kube-master
 users:
   - name: core
-    ssh-authorized-keys: 
+    ssh-authorized-keys:
       - <SSH_PUBLIC_KEY>
-    groups: 
+    groups:
       - sudo
     shell: /bin/bash
 
 write_files:
-  - path: /etc/other-environment 
+  - path: /etc/other-environment
     owner: root
     permissions: 0755
     content: |
@@ -37,18 +37,18 @@ write_files:
     permissions: 0755
     content: |
       #! /usr/bin/bash
-      # Usage: calico-node.sh <node ip> 
+      # Usage: calico-node.sh <node ip>
 
       # Install necessary kernel modules
       sudo modprobe xt_set
       sudo modprobe ip6_tables
       sudo /home/core/calicoctl checksystem --fix
 
-      # Create a /tmp directory for docker plugins.  We don't actually use docker plugins, 
+      # Create a /tmp directory for docker plugins.  We don't actually use docker plugins,
       # but the default docker directory is in /usr, which fails on CoreOS.
       TEMP_PLUGIN_DIR=`mktemp`
       echo "Using tmp plugin dir ${TEMP_PLUGIN_DIR}"
-      
+
       # Start the Calico node.  Don't need the --kubernetes flag, since the Master does
       # not run the Kubelet.
       sudo ETCD_AUTHORITY=127.0.0.1:4001 /home/core/calicoctl node --ip=$1 --plugin-dir=$TEMP_PLUGIN_DIR
@@ -129,7 +129,7 @@ coreos:
         EnvironmentFile=/etc/other-environment
         User=root
         PermissionsStartOnly=true
-        ExecStartPre=-/usr/bin/wget -N -P "/home/core" "https://github.com/Metaswitch/calico-docker/releases/download/v0.5.1/calicoctl"
+        ExecStartPre=-/usr/bin/wget -N -P "/home/core" "https://github.com/projectcalico/calicoctl/releases/download/v0.5.1/calicoctl"
         ExecStartPre=-chmod +x /home/core/calicoctl
         ExecStart=/home/core/calico-node.sh $DEFAULT_IPV4
         RemainAfterExit=yes
@@ -157,7 +157,7 @@ coreos:
         Restart=always
         RestartSec=10
 
-    - name: kube-controller-manager.service 
+    - name: kube-controller-manager.service
       runtime: true
       command: start
       content: |
